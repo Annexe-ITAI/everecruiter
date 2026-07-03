@@ -1,28 +1,34 @@
 const { createClient } = require("@supabase/supabase-js");
+const express = require("express");
+const axios = require("axios");
+const crypto = require("crypto");
+
+const app = express();
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const express = require("express");
-const axios = require("axios");
-
-const app = express();
-
 const {
   EVE_CLIENT_ID,
   EVE_CLIENT_SECRET,
-  EVE_CALLBACK_URL
+  EVE_CALLBACK_URL,
+  FRONTEND_URL
 } = process.env;
 
-// basic health check
+// =========================
+// HEALTH CHECK
+// =========================
+
 app.get("/", (req, res) => {
   res.send("EVE Recruiter API Running");
 });
 
+// =========================
+// LOGIN
+// =========================
 
-// 1. START LOGIN FLOW
 app.get("/auth/eve/login", (req, res) => {
   const scopes = [
     "publicData",
@@ -55,14 +61,14 @@ app.get("/auth/eve/login", (req, res) => {
   res.redirect(url);
 });
 
+// =========================
+// CALLBACK
+// =========================
 
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
 
   try {
-    // =========================
-    // 1. Exchange code for tokens
-    // =========================
     const tokenResponse = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -71,17 +77,14 @@ app.get("/auth/eve/callback", async (req, res) => {
       }),
       {
         auth: {
-          username: process.env.EVE_CLIENT_ID,
-          password: process.env.EVE_CLIENT_SECRET
+          username: EVE_CLIENT_ID,
+          password: EVE_CLIENT_SECRET
         }
       }
     );
 
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // =========================
-    // 2. Verify character
-    // =========================
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
@@ -96,9 +99,6 @@ app.get("/auth/eve/callback", async (req, res) => {
     const character_id = character.CharacterID;
     const character_name = character.CharacterName;
 
-    // =========================
-    // 3. Check if character exists
-    // =========================
     let { data: existingChar } = await supabase
       .from("characters")
       .select("*")
@@ -107,11 +107,7 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     let user_id;
 
-    // =========================
-    // 4. CREATE OR LINK USER
-    // =========================
     if (!existingChar) {
-      // check if any user exists
       let { data: anyUser } = await supabase
         .from("users")
         .select("*")
@@ -119,7 +115,6 @@ app.get("/auth/eve/callback", async (req, res) => {
         .single();
 
       if (!anyUser) {
-        // FIRST EVER USER
         const { data: newUser } = await supabase
           .from("users")
           .insert({})
@@ -131,13 +126,12 @@ app.get("/auth/eve/callback", async (req, res) => {
         user_id = anyUser.id;
       }
 
-      // is this first character?
       let { data: mainCharCheck } = await supabase
         .from("characters")
         .select("*")
         .eq("user_id", user_id);
 
-      const is_main = mainCharCheck.length === 0;
+      const is_main = !mainCharCheck || mainCharCheck.length === 0;
 
       await supabase.from("characters").insert({
         character_id,
@@ -150,7 +144,6 @@ app.get("/auth/eve/callback", async (req, res) => {
     } else {
       user_id = existingChar.user_id;
 
-      // update corp changes
       await supabase
         .from("characters")
         .update({
@@ -161,38 +154,88 @@ app.get("/auth/eve/callback", async (req, res) => {
         .eq("character_id", character_id);
     }
 
-    // =========================
-    // 5. Store tokens
-    // =========================
     await supabase.from("auth_tokens").upsert({
       character_id,
       access_token,
       refresh_token,
-      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
-      scopes: process.env.EVE_SCOPES
+      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString()
     });
 
-    // =========================
-    // 6. Log sync run
-    // =========================
-    await supabase.from("sync_runs").insert({
-      character_id,
-      started_at: new Date(),
-      status: "login"
+    const session_id = crypto.randomUUID();
+
+    await supabase.from("sessions").insert({
+      session_id,
+      user_id
     });
 
-    // =========================
-    // 7. Redirect to frontend
-    // =========================
-    res.redirect(process.env.FRONTEND_URL + "/dashboard");
-
+    res.redirect(`${FRONTEND_URL}/dashboard?session=${session_id}`);
   } catch (err) {
     console.error(err.response?.data || err.message);
     res.status(500).send("EVE Callback Error");
   }
 });
 
+// =========================
+// API ME
+// =========================
+
+app.get("/api/me", async (req, res) => {
+  try {
+    const session_id = req.query.session;
+
+    if (!session_id) {
+      return res.status(401).send("No session");
+    }
+
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("session_id", session_id)
+      .single();
+
+    if (!session) {
+      return res.status(401).send("Invalid session");
+    }
+
+    const { data: mainChar } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("user_id", session.user_id)
+      .eq("is_main", true)
+      .single();
+
+    const { data: alts } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("user_id", session.user_id);
+
+    res.json({
+      main_character: {
+        character_id: mainChar.character_id,
+        name: mainChar.character_name,
+        corporation: mainChar.corporation_id,
+        alliance: mainChar.alliance_id
+      },
+      alts: (alts || []).map(c => ({
+        name: c.character_name,
+        corporation: c.corporation_id
+      })),
+      discord: {
+        linked: false
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
+});
+
+// =========================
+// START SERVER
+// =========================
+
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
