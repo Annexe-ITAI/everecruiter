@@ -52,7 +52,7 @@ app.get("/auth/eve/login", (req, res) => {
     `&scope=${encodeURIComponent(scopes)}` +
     `&state=secure_random_state`;
 
-  res.redirect("https://recruit.inextremis.co/dashboard.html");
+  res.redirect(url);
 });
 
 
@@ -184,7 +184,7 @@ app.get("/auth/eve/callback", async (req, res) => {
     // =========================
     // 7. Redirect to frontend
     // =========================
-    res.redirect("https://recruit.inextremis.co/dashboard");
+    res.redirect("https://recruit.inextremis.co/dashboard.html");
 
   } catch (err) {
     console.error(err.response?.data || err.message);
