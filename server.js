@@ -1,3 +1,10 @@
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 const express = require("express");
 const axios = require("axios");
 
@@ -49,12 +56,13 @@ app.get("/auth/eve/login", (req, res) => {
 });
 
 
-// 2. CALLBACK FROM EVE
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
 
   try {
-    // exchange code for token
+    // =========================
+    // 1. Exchange code for tokens
+    // =========================
     const tokenResponse = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -63,15 +71,17 @@ app.get("/auth/eve/callback", async (req, res) => {
       }),
       {
         auth: {
-          username: EVE_CLIENT_ID,
-          password: EVE_CLIENT_SECRET
+          username: process.env.EVE_CLIENT_ID,
+          password: process.env.EVE_CLIENT_SECRET
         }
       }
     );
 
-    const { access_token, refresh_token } = tokenResponse.data;
+    const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // decode character info from EVE
+    // =========================
+    // 2. Verify character
+    // =========================
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
@@ -83,16 +93,102 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    // TEMP: just log for now (we will add Supabase next step)
-    console.log("CHARACTER LOGIN:", character);
-    console.log("REFRESH TOKEN:", refresh_token);
+    const character_id = character.CharacterID;
+    const character_name = character.CharacterName;
 
-    // redirect to frontend dashboard
-    res.redirect("https://recruit.inextremis.co");
+    // =========================
+    // 3. Check if character exists
+    // =========================
+    let { data: existingChar } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("character_id", character_id)
+      .single();
+
+    let user_id;
+
+    // =========================
+    // 4. CREATE OR LINK USER
+    // =========================
+    if (!existingChar) {
+      // check if any user exists
+      let { data: anyUser } = await supabase
+        .from("users")
+        .select("*")
+        .limit(1)
+        .single();
+
+      if (!anyUser) {
+        // FIRST EVER USER
+        const { data: newUser } = await supabase
+          .from("users")
+          .insert({})
+          .select()
+          .single();
+
+        user_id = newUser.id;
+      } else {
+        user_id = anyUser.id;
+      }
+
+      // is this first character?
+      let { data: mainCharCheck } = await supabase
+        .from("characters")
+        .select("*")
+        .eq("user_id", user_id);
+
+      const is_main = mainCharCheck.length === 0;
+
+      await supabase.from("characters").insert({
+        character_id,
+        user_id,
+        character_name,
+        corporation_id: character.CorporationID,
+        alliance_id: character.AllianceID || null,
+        is_main
+      });
+    } else {
+      user_id = existingChar.user_id;
+
+      // update corp changes
+      await supabase
+        .from("characters")
+        .update({
+          character_name,
+          corporation_id: character.CorporationID,
+          alliance_id: character.AllianceID || null
+        })
+        .eq("character_id", character_id);
+    }
+
+    // =========================
+    // 5. Store tokens
+    // =========================
+    await supabase.from("auth_tokens").upsert({
+      character_id,
+      access_token,
+      refresh_token,
+      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+      scopes: process.env.EVE_SCOPES
+    });
+
+    // =========================
+    // 6. Log sync run
+    // =========================
+    await supabase.from("sync_runs").insert({
+      character_id,
+      started_at: new Date(),
+      status: "login"
+    });
+
+    // =========================
+    // 7. Redirect to frontend
+    // =========================
+    res.redirect("https://recruit.inextremis.co/dashboard");
 
   } catch (err) {
     console.error(err.response?.data || err.message);
-    res.status(500).send("EVE SSO Error");
+    res.status(500).send("EVE Callback Error");
   }
 });
 
