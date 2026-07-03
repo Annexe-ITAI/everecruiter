@@ -184,7 +184,7 @@ app.get("/auth/eve/callback", async (req, res) => {
     // =========================
     // 7. Redirect to frontend
     // =========================
-    res.redirect("https://recruit.inextremis.co/dashboard.html");
+    res.redirect("/dashboard");
 
   } catch (err) {
     console.error(err.response?.data || err.message);
