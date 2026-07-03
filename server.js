@@ -187,28 +187,34 @@ app.get("/api/me", async (req, res) => {
       return res.status(401).send("No session");
     }
 
-    const { data: session } = await supabase
+    // 1. SESSION (SAFE)
+    const { data: sessions } = await supabase
       .from("sessions")
       .select("*")
-      .eq("session_id", session_id)
-      .single();
+      .eq("session_id", session_id);
+
+    const session = sessions?.[0];
 
     if (!session) {
       return res.status(401).send("Invalid session");
     }
 
-    const { data: mainChar } = await supabase
-      .from("characters")
-      .select("*")
-      .eq("user_id", session.user_id)
-      .eq("is_main", true)
-      .single();
-
-    const { data: alts } = await supabase
+    // 2. CHARACTERS (SAFE)
+    const { data: characters } = await supabase
       .from("characters")
       .select("*")
       .eq("user_id", session.user_id);
 
+    if (!characters || characters.length === 0) {
+      return res.status(404).send("No characters found");
+    }
+
+    const mainChar =
+      characters.find(c => c.is_main) || characters[0];
+
+    const alts = characters;
+
+    // 3. RESPONSE
     res.json({
       main_character: {
         character_id: mainChar.character_id,
@@ -216,7 +222,7 @@ app.get("/api/me", async (req, res) => {
         corporation: mainChar.corporation_id,
         alliance: mainChar.alliance_id
       },
-      alts: (alts || []).map(c => ({
+      alts: alts.map(c => ({
         name: c.character_name,
         corporation: c.corporation_id
       })),
@@ -224,8 +230,9 @@ app.get("/api/me", async (req, res) => {
         linked: false
       }
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("API /me error:", err);
     res.status(500).send("Server error");
   }
 });
