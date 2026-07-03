@@ -52,7 +52,7 @@ app.get("/auth/eve/login", (req, res) => {
     `&scope=${encodeURIComponent(scopes)}` +
     `&state=secure_random_state`;
 
-  res.redirect(url);
+  res.redirect("https://recruit.inextremis.co/dashboard.html");
 });
 
 
