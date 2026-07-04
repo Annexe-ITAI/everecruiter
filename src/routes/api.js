@@ -6,12 +6,13 @@ const router = express.Router();
 
 router.get("/me", async (req, res) => {
   try {
-    const token = req.cookies.session;
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-      return res.status(401).json({ error: "No session" });
+    if (!authHeader) {
+      return res.status(401).json({ error: "No token" });
     }
 
+    const token = authHeader.split(" ")[1];
     const session = verifySession(token);
 
     const { data: character } = await supabase
