@@ -1,23 +1,12 @@
 const express = require("express");
 const axios = require("axios");
-const crypto = require("crypto");
 const cors = require("cors");
-const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 
 app.use(cors({
-  origin: "https://recruit.inextremis.co",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  origin: "https://recruit.inextremis.co"
 }));
-
-app.options("*", cors());
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const {
   EVE_CLIENT_ID,
@@ -27,33 +16,10 @@ const {
 } = process.env;
 
 // =============================
-// HEALTH
-// =============================
-app.get("/", (req, res) => {
-  res.send("EVE Recruiter API Running");
-});
-
-// =============================
 // SCOPES
 // =============================
 const SCOPES = [
-  "publicData",
-  "esi-location.read_location.v1",
-  "esi-mail.read_mail.v1",
-  "esi-wallet.read_character_wallet.v1",
-  "esi-clones.read_clones.v1",
-  "esi-characters.read_contacts.v1",
-  "esi-assets.read_assets.v1",
-  "esi-characters.read_chat_channels.v1",
-  "esi-characters.read_standings.v1",
-  "esi-industry.read_character_jobs.v1",
-  "esi-markets.read_character_orders.v1",
-  "esi-characters.read_corporation_roles.v1",
-  "esi-contracts.read_character_contracts.v1",
-  "esi-clones.read_implants.v1",
-  "esi-corporations.read_contacts.v1",
-  "esi-corporations.read_standings.v1",
-  "esi-characters.read_titles.v1"
+  "publicData"
 ].join(" ");
 
 // =============================
@@ -65,14 +31,13 @@ app.get("/auth/eve/login", (req, res) => {
     `?response_type=code` +
     `&redirect_uri=${encodeURIComponent(EVE_CALLBACK_URL)}` +
     `&client_id=${EVE_CLIENT_ID}` +
-    `&scope=${encodeURIComponent(SCOPES)}` +
-    `&state=secure_random_state`;
+    `&scope=${encodeURIComponent(SCOPES)}`;
 
   res.redirect(url);
 });
 
 // =============================
-// CALLBACK (PHP STYLE SESSION)
+// CALLBACK
 // =============================
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
@@ -92,50 +57,22 @@ app.get("/auth/eve/callback", async (req, res) => {
       }
     );
 
-    const { access_token, refresh_token, expires_in } = tokenRes.data;
+    const { access_token } = tokenRes.data;
 
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
-        headers: { Authorization: `Bearer ${access_token}` }
+        headers: {
+          Authorization: `Bearer ${access_token}`
+        }
       }
     );
 
     const character = verify.data;
 
-    const character_id = character.CharacterID;
-    const character_name = character.CharacterName;
-
-    // 1. Upsert character
-    await supabase.from("characters").upsert({
-      character_id,
-      character_name,
-      corporation_id: character.CorporationID || null,
-      alliance_id: character.AllianceID || null,
-      is_main: true
-    }, { onConflict: "character_id" });
-
-    // 2. Store tokens
-    await supabase.from("auth_tokens").upsert({
-      character_id,
-      access_token,
-      refresh_token,
-      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
-      scopes: SCOPES
-    }, { onConflict: "character_id" });
-
-    // 3. CREATE SESSION (LIKE PHP)
-    const session_id = crypto.randomUUID();
-
-    await supabase.from("sessions").insert({
-      session_id,
-      character_id,
-      created_at: new Date().toISOString()
-    });
-
-    // 4. REDIRECT WITH SESSION ID
+    // send directly to frontend with identity
     return res.redirect(
-      `${FRONTEND_URL}/dashboard?session=${session_id}`
+      `${FRONTEND_URL}/dashboard.html?character_id=${character.CharacterID}&character_name=${encodeURIComponent(character.CharacterName)}`
     );
 
   } catch (err) {
@@ -144,56 +81,6 @@ app.get("/auth/eve/callback", async (req, res) => {
   }
 });
 
-// =============================
-// API ME (SESSION BASED)
-// =============================
-app.get("/api/me", async (req, res) => {
-  try {
-    const session_id = req.query.session;
-
-    if (!session_id) {
-      return res.status(401).send("No session");
-    }
-
-    const { data: session } = await supabase
-      .from("sessions")
-      .select("*")
-      .eq("session_id", session_id)
-      .single();
-
-    if (!session) {
-      return res.status(401).send("Invalid session");
-    }
-
-    const { data: character } = await supabase
-      .from("characters")
-      .select("*")
-      .eq("character_id", session.character_id)
-      .single();
-
-    if (!character) {
-      return res.status(401).send("Character not found");
-    }
-
-    return res.json({
-      main_character: {
-        name: character.character_name,
-        character_id: character.character_id,
-        corporation: character.corporation_id,
-        alliance: character.alliance_id
-      },
-      alts: []
-    });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).send("Server error");
-  }
-});
-
-// =============================
-// START
-// =============================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
