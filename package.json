@@ -1,7 +1,7 @@
 {
   "name": "everecruiter-api",
   "version": "1.0.0",
-  "description": "EVE Online recruitment backend API",
+  "description": "EVE Online Recruitment backend API",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
