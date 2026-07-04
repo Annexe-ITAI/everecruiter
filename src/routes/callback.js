@@ -115,15 +115,11 @@ router.get("/", async (req, res) => {
       user_id
     });
 
-    res.cookie("session", sessionToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
 
     // 7. Redirect
-    return res.redirect("https://recruit.inextremis.co/dashboard");
+    return res.redirect(
+      `https://recruit.inextremis.co/dashboard?token=${sessionToken}`
+    );
 
   } catch (err) {
     console.error("Callback error:", err.response?.data || err.message);
