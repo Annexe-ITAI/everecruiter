@@ -150,8 +150,13 @@ router.get("/", async (req, res) => {
       secure: true,
       sameSite: "None"
     });
-    
+
     return res.redirect("https://recruit.inextremis.co/dashboard");
+
+  } catch (err) {
+    console.error("Callback error:", err.response?.data || err.message);
+    return res.status(500).send("Authentication failed");
+  }
 });
 
 export default router;
