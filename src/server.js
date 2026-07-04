@@ -1,5 +1,6 @@
 import express from "express";
 import authRoutes from "./routes/auth.js";
+import callbackRoutes from "./routes/callback.js";
 
 const app = express();
 
@@ -11,6 +12,8 @@ app.use("/auth/eve", authRoutes);
 app.get("/", (req, res) => {
   res.send("EVE Recruiter API is running");
 });
+
+app.use("/auth/eve/callback", callbackRoutes);
 
 const PORT = process.env.PORT || 3000;
 
