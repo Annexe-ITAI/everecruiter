@@ -2,8 +2,13 @@ const { createClient } = require("@supabase/supabase-js");
 const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
+const cors = require("cors");
 
 const app = express();
+
+app.use(cors({
+  origin: "https://recruit.inextremis.co"
+}));
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
