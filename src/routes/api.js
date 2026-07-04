@@ -4,7 +4,6 @@ import { verifySession } from "../services/session.js";
 
 const router = express.Router();
 
-// TEMP: simple identity lookup (we improve later with sessions)
 router.get("/me", async (req, res) => {
   try {
     const token = req.cookies.session;
