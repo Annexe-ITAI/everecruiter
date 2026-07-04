@@ -2,7 +2,6 @@ const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
 const cors = require("cors");
-const cookieParser = require("cookie-parser");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
@@ -12,8 +11,6 @@ app.use(cors({
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
-app.use(cookieParser());
 
 app.options("*", cors());
 
@@ -37,7 +34,7 @@ app.get("/", (req, res) => {
 });
 
 // =============================
-// FULL ESI SCOPES (RESTORED)
+// SCOPES
 // =============================
 const SCOPES = [
   "publicData",
@@ -75,13 +72,12 @@ app.get("/auth/eve/login", (req, res) => {
 });
 
 // =============================
-// CALLBACK (FIXED FLOW)
+// CALLBACK
 // =============================
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
 
   try {
-    // 1. Exchange code for tokens
     const tokenRes = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -98,7 +94,6 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const { access_token, refresh_token, expires_in } = tokenRes.data;
 
-    // 2. Verify character
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
@@ -110,34 +105,30 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    // 3. UPSERT CHARACTER
-    await supabase.from("characters").upsert({
-      character_id: character.CharacterID,
-      character_name: character.CharacterName,
-      corporation_id: character.CorporationID,
-      alliance_id: character.AllianceID || null,
-      is_main: true
-    });
+    const character_id = character.CharacterID;
+    const character_name = character.CharacterName;
+    const corporation_id = character.CorporationID || null;
+    const alliance_id = character.AllianceID || null;
 
-    // 4. STORE TOKENS
+    await supabase.from("characters").upsert({
+      character_id,
+      character_name,
+      corporation_id,
+      alliance_id,
+      is_main: true
+    }, { onConflict: "character_id" });
+
     await supabase.from("auth_tokens").upsert({
-      character_id: character.CharacterID,
+      character_id,
       access_token,
       refresh_token,
       token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
-      updated_at: new Date().toISOString()
-    });
+      scopes: SCOPES
+    }, { onConflict: "character_id" });
 
-    // 5. SET PERSISTENT COOKIE (THIS REPLACES SESSIONS TABLE)
-    res.cookie("character_id", character.CharacterID, {
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      httpOnly: false, // frontend needs to read it
-      secure: true,
-      sameSite: "lax"
-    });
-
-    // 6. REDIRECT
-    return res.redirect(`${FRONTEND_URL}/dashboard`);
+    return res.redirect(
+      `${FRONTEND_URL}/dashboard?character_id=${character_id}`
+    );
 
   } catch (err) {
     console.error(err.response?.data || err.message);
@@ -146,40 +137,39 @@ app.get("/auth/eve/callback", async (req, res) => {
 });
 
 // =============================
-// API ME (FIXED FOR NEW MODEL)
+// API ME
 // =============================
 app.get("/api/me", async (req, res) => {
   try {
-    const character_id =
-      req.cookies.character_id || req.query.character_id;
+    const character_id = req.query.character_id;
 
     if (!character_id) {
-      return res.status(401).send("No auth");
+      return res.status(401).send("No session");
     }
 
-    const { data: char } = await supabase
+    const { data, error } = await supabase
       .from("characters")
       .select("*")
       .eq("character_id", character_id)
       .single();
 
-    if (!char) {
-      return res.status(401).send("Invalid user");
+    if (error || !data) {
+      return res.status(401).send("Invalid session");
     }
 
     return res.json({
       main_character: {
-        name: char.character_name,
-        character_id: char.character_id,
-        corporation: char.corporation_id,
-        alliance: char.alliance_id
+        name: data.character_name,
+        character_id: data.character_id,
+        corporation: data.corporation_id,
+        alliance: data.alliance_id
       },
       alts: []
     });
 
   } catch (err) {
     console.error(err);
-    res.status(500).send("Server error");
+    return res.status(500).send("Server error");
   }
 });
 
