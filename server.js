@@ -72,7 +72,7 @@ app.get("/auth/eve/login", (req, res) => {
 });
 
 // =============================
-// CALLBACK
+// CALLBACK (PHP STYLE SESSION)
 // =============================
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
@@ -97,9 +97,7 @@ app.get("/auth/eve/callback", async (req, res) => {
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
-        headers: {
-          Authorization: `Bearer ${access_token}`
-        }
+        headers: { Authorization: `Bearer ${access_token}` }
       }
     );
 
@@ -107,17 +105,17 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character_id = character.CharacterID;
     const character_name = character.CharacterName;
-    const corporation_id = character.CorporationID || null;
-    const alliance_id = character.AllianceID || null;
 
+    // 1. Upsert character
     await supabase.from("characters").upsert({
       character_id,
       character_name,
-      corporation_id,
-      alliance_id,
+      corporation_id: character.CorporationID || null,
+      alliance_id: character.AllianceID || null,
       is_main: true
     }, { onConflict: "character_id" });
 
+    // 2. Store tokens
     await supabase.from("auth_tokens").upsert({
       character_id,
       access_token,
@@ -126,8 +124,18 @@ app.get("/auth/eve/callback", async (req, res) => {
       scopes: SCOPES
     }, { onConflict: "character_id" });
 
+    // 3. CREATE SESSION (LIKE PHP)
+    const session_id = crypto.randomUUID();
+
+    await supabase.from("sessions").insert({
+      session_id,
+      character_id,
+      created_at: new Date().toISOString()
+    });
+
+    // 4. REDIRECT WITH SESSION ID
     return res.redirect(
-      `${FRONTEND_URL}/dashboard?character_id=${character_id}`
+      `${FRONTEND_URL}/dashboard?session=${session_id}`
     );
 
   } catch (err) {
@@ -137,32 +145,42 @@ app.get("/auth/eve/callback", async (req, res) => {
 });
 
 // =============================
-// API ME
+// API ME (SESSION BASED)
 // =============================
 app.get("/api/me", async (req, res) => {
   try {
-    const character_id = req.query.character_id;
+    const session_id = req.query.session;
 
-    if (!character_id) {
+    if (!session_id) {
       return res.status(401).send("No session");
     }
 
-    const { data, error } = await supabase
-      .from("characters")
+    const { data: session } = await supabase
+      .from("sessions")
       .select("*")
-      .eq("character_id", character_id)
+      .eq("session_id", session_id)
       .single();
 
-    if (error || !data) {
+    if (!session) {
       return res.status(401).send("Invalid session");
+    }
+
+    const { data: character } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("character_id", session.character_id)
+      .single();
+
+    if (!character) {
+      return res.status(401).send("Character not found");
     }
 
     return res.json({
       main_character: {
-        name: data.character_name,
-        character_id: data.character_id,
-        corporation: data.corporation_id,
-        alliance: data.alliance_id
+        name: character.character_name,
+        character_id: character.character_id,
+        corporation: character.corporation_id,
+        alliance: character.alliance_id
       },
       alts: []
     });
