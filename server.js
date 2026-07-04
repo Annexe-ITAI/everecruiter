@@ -49,12 +49,15 @@ const SCOPES = [
 // LOGIN
 // =============================
 app.get("/auth/eve/login", (req, res) => {
+  const state = crypto.randomUUID();
+
   const url =
     "https://login.eveonline.com/v2/oauth/authorize/" +
     `?response_type=code` +
     `&redirect_uri=${encodeURIComponent(EVE_CALLBACK_URL)}` +
     `&client_id=${EVE_CLIENT_ID}` +
-    `&scope=${encodeURIComponent(SCOPES)}`;
+    `&scope=${encodeURIComponent(SCOPES)}` +
+    `&state=${state}`;
 
   res.redirect(url);
 });
