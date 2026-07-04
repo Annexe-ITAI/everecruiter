@@ -15,9 +15,7 @@ router.get("/", async (req, res) => {
       return res.status(400).send("Missing code");
     }
 
-    // ----------------------------------------
     // 1. Exchange code for tokens
-    // ----------------------------------------
     const tokenResponse = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -35,12 +33,9 @@ router.get("/", async (req, res) => {
       }
     );
 
-    const { access_token, refresh_token, expires_in } =
-      tokenResponse.data;
+    const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // ----------------------------------------
-    // 2. Verify character identity
-    // ----------------------------------------
+    // 2. Verify character
     const verifyResponse = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
@@ -50,14 +45,10 @@ router.get("/", async (req, res) => {
       }
     );
 
-    const character = verifyResponse.data;
+    const character_id = verifyResponse.data.CharacterID;
+    const character_name = verifyResponse.data.CharacterName;
 
-    const character_id = character.CharacterID;
-    const character_name = character.CharacterName;
-
-    // ----------------------------------------
-    // 3. Get corporation + alliance info
-    // ----------------------------------------
+    // 3. Get corp info
     const charInfo = await axios.get(
       `https://esi.evetech.net/latest/characters/${character_id}/`
     );
@@ -65,9 +56,7 @@ router.get("/", async (req, res) => {
     const corporation_id = charInfo.data.corporation_id;
     const alliance_id = charInfo.data.alliance_id || null;
 
-    // ----------------------------------------
-    // 4. Find or create user
-    // ----------------------------------------
+    // 4. Create / find user
     let { data: existingCharacter } = await supabase
       .from("characters")
       .select("*")
@@ -77,7 +66,6 @@ router.get("/", async (req, res) => {
     let user_id;
 
     if (!existingCharacter) {
-      // create user
       const { data: newUser } = await supabase
         .from("users")
         .insert({
@@ -91,7 +79,6 @@ router.get("/", async (req, res) => {
 
       user_id = newUser.id;
 
-      // create character
       await supabase.from("characters").insert({
         character_id,
         user_id,
@@ -103,7 +90,6 @@ router.get("/", async (req, res) => {
     } else {
       user_id = existingCharacter.user_id;
 
-      // update character (refresh corp data)
       await supabase
         .from("characters")
         .update({
@@ -114,38 +100,21 @@ router.get("/", async (req, res) => {
         .eq("character_id", character_id);
     }
 
-    // ----------------------------------------
-    // 5. Store auth token
-    // ----------------------------------------
+    // 5. Store tokens
     await supabase.from("auth_tokens").upsert({
       character_id,
       access_token,
       refresh_token,
       token_expires_at: new Date(Date.now() + expires_in * 1000),
-      scopes: tokenResponse.data.scope || null,
       updated_at: new Date()
     });
 
-    // ----------------------------------------
-    // 6. Determine recruitment state
-    // ----------------------------------------
-    const isMember = corporation_id === TOOL_CORP_ID;
-
-    console.log("LOGIN:", {
-      character_id,
-      character_name,
-      corporation_id,
-      isMember
-    });
-
-    // ----------------------------------------
-    // 7. Create session + redirect
-    // ----------------------------------------
+    // 6. Session
     const sessionToken = createSession({
       character_id,
       user_id
     });
-    
+
     res.cookie("session", sessionToken, {
       httpOnly: true,
       secure: true,
@@ -153,6 +122,7 @@ router.get("/", async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
+    // 7. Redirect
     return res.redirect("https://recruit.inextremis.co/dashboard");
 
   } catch (err) {
