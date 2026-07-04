@@ -6,8 +6,12 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors({
-  origin: "https://recruit.inextremis.co"
+  origin: "https://recruit.inextremis.co",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+app.options("*", cors());
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
