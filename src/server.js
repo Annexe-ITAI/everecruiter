@@ -6,14 +6,12 @@ const app = express();
 
 app.use(express.json());
 
-// Routes
 app.use("/auth/eve", authRoutes);
+app.use("/auth/eve/callback", callbackRoutes);
 
 app.get("/", (req, res) => {
   res.send("EVE Recruiter API is running");
 });
-
-app.use("/auth/eve/callback", callbackRoutes);
 
 const PORT = process.env.PORT || 3000;
 
