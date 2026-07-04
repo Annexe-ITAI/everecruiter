@@ -1,43 +1,36 @@
 import express from "express";
 import { supabase } from "../services/supabase.js";
+import { verifySession } from "../services/session.js";
 
 const router = express.Router();
 
 // TEMP: simple identity lookup (we improve later with sessions)
 router.get("/me", async (req, res) => {
   try {
-    // For now we identify user by character_id passed in query
-    const { character_id } = req.query;
+    const token = req.cookies.session;
 
-    if (!character_id) {
-      return res.status(400).json({ error: "Missing character_id" });
+    if (!token) {
+      return res.status(401).json({ error: "No session" });
     }
 
-    // Get character
+    const session = verifySession(token);
+
     const { data: character } = await supabase
       .from("characters")
       .select("*")
-      .eq("character_id", character_id)
+      .eq("character_id", session.character_id)
       .single();
 
-    if (!character) {
-      return res.status(404).json({ error: "Character not found" });
-    }
-
-    // Get user
     const { data: user } = await supabase
       .from("users")
       .select("*")
-      .eq("id", character.user_id)
+      .eq("id", session.user_id)
       .single();
 
-    return res.json({
-      user,
-      character
-    });
+    return res.json({ user, character });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(401).json({ error: "Invalid session" });
   }
 });
 
