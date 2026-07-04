@@ -138,15 +138,20 @@ router.get("/", async (req, res) => {
     });
 
     // ----------------------------------------
-    // 7. Redirect to dashboard
+    // 7. Create session + redirect
     // ----------------------------------------
-    return res.redirect(
-      "https://recruit.inextremis.co/dashboard"
-    );
-  } catch (err) {
-    console.error("Callback error:", err.response?.data || err.message);
-    return res.status(500).send("Authentication failed");
-  }
+    const sessionToken = createSession({
+      character_id,
+      user_id
+    });
+    
+    res.cookie("session", sessionToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None"
+    });
+    
+    return res.redirect("https://recruit.inextremis.co/dashboard");
 });
 
 export default router;
