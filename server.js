@@ -106,17 +106,24 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const session_id = crypto.randomUUID();
 
-    await supabase.from("sessions").upsert({
+    const { error } = await supabase.from("sessions").insert({
       session_id,
-      character_id: character.CharacterID
+      user_id: character.CharacterID,
+      created_at: new Date().toISOString()
     });
 
-    // PASS SESSION TO FRONTEND
-    res.redirect(`${FRONTEND_URL}/dashboard?session=${session_id}`);
+    if (error) {
+      console.error("SUPABASE INSERT ERROR:", error);
+      return res.status(500).send("Database insert failed");
+    }
+
+    return res.redirect(
+      `${FRONTEND_URL}/dashboard?session=${session_id}`
+    );
 
   } catch (err) {
     console.error(err.response?.data || err.message);
-    res.status(500).send("OAuth Error");
+    return res.status(500).send("OAuth Error");
   }
 });
 
