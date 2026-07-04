@@ -1,3 +1,10 @@
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
@@ -85,7 +92,26 @@ app.get("/auth/eve/callback", async (req, res) => {
     );
 
     const character = verify.data;
-
+    
+    const character_id = character.CharacterID;
+    const character_name = character.CharacterName;
+    
+    await supabase.from("characters").upsert({
+      character_id,
+      character_name,
+      corporation_id: character.CorporationID || null,
+      alliance_id: character.AllianceID || null,
+      is_main: true
+    }, { onConflict: "character_id" });
+    
+    await supabase.from("auth_tokens").upsert({
+      character_id,
+      access_token,
+      refresh_token,
+      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+      scopes: SCOPES
+    }, { onConflict: "character_id" });
+    
     // send directly to frontend with identity
     return res.redirect(
       `${FRONTEND_URL}/dashboard.html?character_id=${character.CharacterID}&character_name=${encodeURIComponent(character.CharacterName)}`
