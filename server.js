@@ -72,7 +72,7 @@ app.get("/auth/eve/login", (req, res) => {
 });
 
 // =============================
-// CALLBACK
+// CALLBACK (FIXED FLOW)
 // =============================
 app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
@@ -105,21 +105,76 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    const session_id = crypto.randomUUID();
+    // =============================
+    // 1. CREATE OR FIND USER (UUID)
+    // =============================
+    let user_id;
 
-    const { error } = await supabase.from("sessions").insert({
-      session_id,
-      user_id: character.CharacterID,
-      created_at: new Date().toISOString()
-    });
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("*")
+      .limit(1)
+      .single();
 
-    if (error) {
-      console.error("SUPABASE INSERT ERROR:", error);
-      return res.status(500).send("Database insert failed");
+    if (!existingUser) {
+      const { data: newUser, error: userError } = await supabase
+        .from("users")
+        .insert({})
+        .select()
+        .single();
+
+      if (userError) {
+        console.error("USER CREATE ERROR:", userError);
+        return res.status(500).send("User creation failed");
+      }
+
+      user_id = newUser.id;
+    } else {
+      user_id = existingUser.id;
     }
 
+    // =============================
+    // 2. UPSERT CHARACTER
+    // =============================
+    const { error: charError } = await supabase
+      .from("characters")
+      .upsert({
+        character_id: character.CharacterID,
+        user_id,
+        character_name: character.CharacterName,
+        corporation_id: character.CorporationID,
+        alliance_id: character.AllianceID || null,
+        is_main: true
+      });
+
+    if (charError) {
+      console.error("CHARACTER UPSERT ERROR:", charError);
+      return res.status(500).send("Character insert failed");
+    }
+
+    // =============================
+    // 3. STORE TOKENS
+    // =============================
+    const { error: tokenError } = await supabase
+      .from("auth_tokens")
+      .upsert({
+        character_id: character.CharacterID,
+        access_token,
+        refresh_token,
+        token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (tokenError) {
+      console.error("TOKEN ERROR:", tokenError);
+      return res.status(500).send("Token save failed");
+    }
+
+    // =============================
+    // 4. REDIRECT TO FRONTEND
+    // =============================
     return res.redirect(
-      `${FRONTEND_URL}/dashboard?session=${session_id}`
+      `${FRONTEND_URL}/dashboard?session=${character.CharacterID}`
     );
 
   } catch (err) {
@@ -129,7 +184,7 @@ app.get("/auth/eve/callback", async (req, res) => {
 });
 
 // =============================
-// API ME (FIXED)
+// API ME (FIXED FOR NEW MODEL)
 // =============================
 app.get("/api/me", async (req, res) => {
   try {
@@ -139,22 +194,22 @@ app.get("/api/me", async (req, res) => {
       return res.status(401).send("No session");
     }
 
-    const { data } = await supabase
-      .from("sessions")
+    const { data: char, error } = await supabase
+      .from("characters")
       .select("*")
-      .eq("session_id", session)
+      .eq("character_id", session)
       .single();
 
-    if (!data) {
+    if (error || !char) {
       return res.status(401).send("Invalid session");
     }
 
     res.json({
       main_character: {
-        name: data.character_name,
-        character_id: data.character_id,
-        corporation: "Unknown",
-        alliance: null
+        name: char.character_name,
+        character_id: char.character_id,
+        corporation: char.corporation_id,
+        alliance: char.alliance_id || null
       },
       alts: []
     });
