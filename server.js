@@ -2,6 +2,7 @@ const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
@@ -11,6 +12,8 @@ app.use(cors({
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+app.use(cookieParser());
 
 app.options("*", cors());
 
@@ -78,6 +81,7 @@ app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
 
   try {
+    // 1. Exchange code for tokens
     const tokenRes = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -94,6 +98,7 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const { access_token, refresh_token, expires_in } = tokenRes.data;
 
+    // 2. Verify character
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
@@ -105,77 +110,34 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    // =============================
-    // 1. CREATE OR FIND USER (UUID)
-    // =============================
-    let user_id;
+    // 3. UPSERT CHARACTER
+    await supabase.from("characters").upsert({
+      character_id: character.CharacterID,
+      character_name: character.CharacterName,
+      corporation_id: character.CorporationID,
+      alliance_id: character.AllianceID || null,
+      is_main: true
+    });
 
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("*")
-      .limit(1)
-      .single();
+    // 4. STORE TOKENS
+    await supabase.from("auth_tokens").upsert({
+      character_id: character.CharacterID,
+      access_token,
+      refresh_token,
+      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+      updated_at: new Date().toISOString()
+    });
 
-    if (!existingUser) {
-      const { data: newUser, error: userError } = await supabase
-        .from("users")
-        .insert({})
-        .select()
-        .single();
+    // 5. SET PERSISTENT COOKIE (THIS REPLACES SESSIONS TABLE)
+    res.cookie("character_id", character.CharacterID, {
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      httpOnly: false, // frontend needs to read it
+      secure: true,
+      sameSite: "lax"
+    });
 
-      if (userError) {
-        console.error("USER CREATE ERROR:", userError);
-        return res.status(500).send("User creation failed");
-      }
-
-      user_id = newUser.id;
-    } else {
-      user_id = existingUser.id;
-    }
-
-    // =============================
-    // 2. UPSERT CHARACTER
-    // =============================
-    const { error: charError } = await supabase
-      .from("characters")
-      .upsert({
-        character_id: character.CharacterID,
-        user_id,
-        character_name: character.CharacterName,
-        corporation_id: character.CorporationID,
-        alliance_id: character.AllianceID || null,
-        is_main: true
-      });
-
-    if (charError) {
-      console.error("CHARACTER UPSERT ERROR:", charError);
-      return res.status(500).send("Character insert failed");
-    }
-
-    // =============================
-    // 3. STORE TOKENS
-    // =============================
-    const { error: tokenError } = await supabase
-      .from("auth_tokens")
-      .upsert({
-        character_id: character.CharacterID,
-        access_token,
-        refresh_token,
-        token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
-        updated_at: new Date().toISOString()
-      });
-
-    if (tokenError) {
-      console.error("TOKEN ERROR:", tokenError);
-      return res.status(500).send("Token save failed");
-    }
-
-    // =============================
-    // 4. REDIRECT TO FRONTEND
-    // =============================
-    return res.redirect(
-      `${FRONTEND_URL}/dashboard?session=${character.CharacterID}`
-    );
+    // 6. REDIRECT
+    return res.redirect(`${FRONTEND_URL}/dashboard`);
 
   } catch (err) {
     console.error(err.response?.data || err.message);
