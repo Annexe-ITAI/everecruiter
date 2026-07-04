@@ -104,15 +104,11 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    const session_token = crypto.randomUUID();
+    const session_id = crypto.randomUUID();
 
     await supabase.from("sessions").upsert({
-      session_token,
-      character_id: character.CharacterID,
-      character_name: character.CharacterName,
-      access_token,
-      refresh_token,
-      expires_at: new Date(Date.now() + expires_in * 1000)
+      session_id,
+      character_id: character.CharacterID
     });
 
     // PASS SESSION TO FRONTEND
@@ -138,7 +134,7 @@ app.get("/api/me", async (req, res) => {
     const { data } = await supabase
       .from("sessions")
       .select("*")
-      .eq("session_token", session)
+      .eq("session_id", session)
       .single();
 
     if (!data) {
