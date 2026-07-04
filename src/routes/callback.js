@@ -117,11 +117,12 @@ router.get("/", async (req, res) => {
     // ----------------------------------------
     // 5. Store auth token
     // ----------------------------------------
-    await supabase.from("auth_token").upsert({
+    await supabase.from("auth_tokens").upsert({
       character_id,
       access_token,
       refresh_token,
       token_expires_at: new Date(Date.now() + expires_in * 1000),
+      scopes: tokenResponse.data.scope || null,
       updated_at: new Date()
     });
 
