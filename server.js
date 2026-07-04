@@ -112,7 +112,7 @@ app.get("/auth/eve/callback", async (req, res) => {
     });
 
     // PASS SESSION TO FRONTEND
-    res.redirect(`${FRONTEND_URL}/dashboard?session=${session_token}`);
+    res.redirect(`${FRONTEND_URL}/dashboard?session=${session_id}`);
 
   } catch (err) {
     console.error(err.response?.data || err.message);
