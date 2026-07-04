@@ -1,14 +1,10 @@
 const express = require("express");
 const axios = require("axios");
-const crypto = require("crypto");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 
-// =============================
-// MIDDLEWARE
-// =============================
 app.use(cors({
   origin: "https://recruit.inextremis.co",
   methods: ["GET", "POST", "OPTIONS"],
@@ -17,17 +13,11 @@ app.use(cors({
 
 app.options("*", cors());
 
-// =============================
-// SUPABASE
-// =============================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// =============================
-// ENV
-// =============================
 const {
   EVE_CLIENT_ID,
   EVE_CLIENT_SECRET,
@@ -36,36 +26,45 @@ const {
 } = process.env;
 
 // =============================
-// HEALTH CHECK
+// HEALTH
 // =============================
 app.get("/", (req, res) => {
   res.send("EVE Recruiter API Running");
 });
 
 // =============================
-// TEST ROUTE
+// FULL ESI SCOPES (RESTORED)
 // =============================
-app.get("/ping", (req, res) => {
-  console.log("PING HIT");
-  res.send("pong");
-});
+const SCOPES = [
+  "publicData",
+  "esi-location.read_location.v1",
+  "esi-mail.read_mail.v1",
+  "esi-wallet.read_character_wallet.v1",
+  "esi-clones.read_clones.v1",
+  "esi-characters.read_contacts.v1",
+  "esi-assets.read_assets.v1",
+  "esi-characters.read_chat_channels.v1",
+  "esi-characters.read_standings.v1",
+  "esi-industry.read_character_jobs.v1",
+  "esi-markets.read_character_orders.v1",
+  "esi-characters.read_corporation_roles.v1",
+  "esi-contracts.read_character_contracts.v1",
+  "esi-clones.read_implants.v1",
+  "esi-corporations.read_contacts.v1",
+  "esi-corporations.read_standings.v1",
+  "esi-characters.read_titles.v1"
+].join(" ");
 
 // =============================
-// START LOGIN FLOW
+// LOGIN
 // =============================
 app.get("/auth/eve/login", (req, res) => {
-  const scopes = [
-    "publicData",
-    "esi-location.read_location.v1",
-    "esi-mail.read_mail.v1"
-  ].join(" ");
-
   const url =
     "https://login.eveonline.com/v2/oauth/authorize/" +
     `?response_type=code` +
     `&redirect_uri=${encodeURIComponent(EVE_CALLBACK_URL)}` +
     `&client_id=${EVE_CLIENT_ID}` +
-    `&scope=${encodeURIComponent(scopes)}` +
+    `&scope=${encodeURIComponent(SCOPES)}` +
     `&state=secure_random_state`;
 
   res.redirect(url);
@@ -78,7 +77,7 @@ app.get("/auth/eve/callback", async (req, res) => {
   const { code } = req.query;
 
   try {
-    const tokenResponse = await axios.post(
+    const tokenRes = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
         grant_type: "authorization_code",
@@ -92,7 +91,7 @@ app.get("/auth/eve/callback", async (req, res) => {
       }
     );
 
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+    const { access_token, refresh_token, expires_in } = tokenRes.data;
 
     const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
@@ -105,18 +104,19 @@ app.get("/auth/eve/callback", async (req, res) => {
 
     const character = verify.data;
 
-    const character_id = character.CharacterID;
-    const character_name = character.CharacterName;
+    const session_token = crypto.randomUUID();
 
-    // store minimal session for now
     await supabase.from("sessions").upsert({
-      character_id,
+      session_token,
+      character_id: character.CharacterID,
+      character_name: character.CharacterName,
       access_token,
       refresh_token,
       expires_at: new Date(Date.now() + expires_in * 1000)
     });
 
-    res.redirect(`${FRONTEND_URL}/dashboard`);
+    // PASS SESSION TO FRONTEND
+    res.redirect(`${FRONTEND_URL}/dashboard?session=${session_token}`);
 
   } catch (err) {
     console.error(err.response?.data || err.message);
@@ -125,10 +125,46 @@ app.get("/auth/eve/callback", async (req, res) => {
 });
 
 // =============================
-// START SERVER
+// API ME (FIXED)
+// =============================
+app.get("/api/me", async (req, res) => {
+  try {
+    const session = req.query.session || req.headers.authorization;
+
+    if (!session) {
+      return res.status(401).send("No session");
+    }
+
+    const { data } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("session_token", session)
+      .single();
+
+    if (!data) {
+      return res.status(401).send("Invalid session");
+    }
+
+    res.json({
+      main_character: {
+        name: data.character_name,
+        character_id: data.character_id,
+        corporation: "Unknown",
+        alliance: null
+      },
+      alts: []
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
+});
+
+// =============================
+// START
 // =============================
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
