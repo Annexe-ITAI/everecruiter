@@ -7,7 +7,7 @@ const router = express.Router();
 
 const TOOL_CORP_ID = 98012419;
 
-router.get("/eve", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const { code } = req.query;
 
