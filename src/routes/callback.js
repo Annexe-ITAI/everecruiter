@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import { supabase } from "../services/supabase.js";
+import { createSession } from "../services/session.js";
 
 const router = express.Router();
 
