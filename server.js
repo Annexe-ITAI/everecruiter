@@ -150,28 +150,29 @@ app.get("/auth/eve/callback", async (req, res) => {
 // =============================
 app.get("/api/me", async (req, res) => {
   try {
-    const session = req.query.session || req.headers.authorization;
+    const character_id =
+      req.cookies.character_id || req.query.character_id;
 
-    if (!session) {
-      return res.status(401).send("No session");
+    if (!character_id) {
+      return res.status(401).send("No auth");
     }
 
-    const { data: char, error } = await supabase
+    const { data: char } = await supabase
       .from("characters")
       .select("*")
-      .eq("character_id", session)
+      .eq("character_id", character_id)
       .single();
 
-    if (error || !char) {
-      return res.status(401).send("Invalid session");
+    if (!char) {
+      return res.status(401).send("Invalid user");
     }
 
-    res.json({
+    return res.json({
       main_character: {
         name: char.character_name,
         character_id: char.character_id,
         corporation: char.corporation_id,
-        alliance: char.alliance_id || null
+        alliance: char.alliance_id
       },
       alts: []
     });
