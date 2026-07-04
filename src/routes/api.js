@@ -22,7 +22,23 @@ router.get("/me", async (req, res) => {
       .select("*")
       .eq("character_id", session.character_id)
       .single();
+    
+    const corpRes = await fetch(
+      `https://esi.evetech.net/latest/corporations/${character.corporation_id}/`
+    );
+    const corpData = await corpRes.json();
 
+    let allianceData = null;
+
+    if (character.alliance_id) {
+      const allianceRes = await fetch(
+        `https://esi.evetech.net/latest/alliances/${character.alliance_id}/`
+      );
+      allianceData = await allianceRes.json();
+    }
+
+    const portrait_url = `https://images.evetech.net/characters/${character.character_id}/portrait?size=256`;
+    
     const { data: user } = await supabase
       .from("users")
       .select("*")
@@ -41,6 +57,11 @@ router.get("/me", async (req, res) => {
       access: {
         isMember,
         role: isMember ? "member" : "external"
+      },
+      meta: {
+        corporation_name: corpData.name,
+        alliance_name: allianceData?.name || null,
+        portrait_url
       }
     });
 
