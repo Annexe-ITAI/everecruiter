@@ -1,17 +1,18 @@
 {
   "name": "everecruiter-api",
   "version": "1.0.0",
-  "main": "server.js",
-  "type": "commonjs",
+  "description": "EVE Online recruitment backend API",
   "type": "module",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node src/server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "axios": "^1.6.0",
-    "@supabase/supabase-js": "^2.0.0",
-    "cors": "^2.8.5",
-    "cookie-parser": "^1.4.6"
+    "@supabase/supabase-js": "^2.49.0",
+    "axios": "^1.7.0",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
