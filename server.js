@@ -1,3 +1,8 @@
+app.get("/ping", (req, res) => {
+  console.log("PING HIT");
+  res.send("pong");
+});
+
 const { createClient } = require("@supabase/supabase-js");
 const express = require("express");
 const axios = require("axios");
