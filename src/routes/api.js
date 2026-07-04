@@ -4,6 +4,8 @@ import { verifySession } from "../services/session.js";
 
 const router = express.Router();
 
+const TOOL_CORP_ID = 98012419;
+
 router.get("/me", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -27,7 +29,20 @@ router.get("/me", async (req, res) => {
       .eq("id", session.user_id)
       .single();
 
-    return res.json({ user, character });
+    if (!character || !user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const isMember = character.corporation_id === TOOL_CORP_ID;
+
+    return res.json({
+      user,
+      character,
+      access: {
+        isMember,
+        role: isMember ? "member" : "external"
+      }
+    });
 
   } catch (err) {
     return res.status(401).json({ error: "Invalid session" });
