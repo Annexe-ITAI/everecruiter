@@ -52,12 +52,12 @@ router.get("/me", async (req, res) => {
           const alliance = await getAlliance(char.alliance_id);
       
           const roles = await getCharacterRoles(char.character_id);
-      
+          
           const isDirector = roles.includes("Director");
-          const isPersonnelManager = roles.includes("PersonnelManager");
-      
+          const isPersonnelManager = roles.includes("Personnel_Manager");
+          
           let roleLabel = "Member";
-      
+          
           if (isDirector && isPersonnelManager) {
             roleLabel = "Director / Personnel Manager";
           } else if (isDirector) {
