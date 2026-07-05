@@ -122,4 +122,7 @@ router.get("/me", async (req, res) => {
   }
 });
 
+console.log("SESSION TOKEN RECEIVED:", token);
+console.log("SESSION DECODED:", session);
+
 export default router;
