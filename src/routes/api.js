@@ -53,7 +53,8 @@ router.get("/me", async (req, res) => {
       
           const roleData = await getCharacterRoles(char.character_id);
           
-          console.log("RAW ROLE RESPONSE:", char.character_id, roleData);
+          console.log("ESI ROLES RAW:", data);
+          console.log("ROLES ARRAY:", data.roles);
           
           // handle different possible ESI shapes safely
           const roles = Array.isArray(roleData)
