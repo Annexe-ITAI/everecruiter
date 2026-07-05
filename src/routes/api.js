@@ -53,8 +53,14 @@ router.get("/me", async (req, res) => {
       
           const roles = await getCharacterRoles(char.character_id);
           
-          const isDirector = roles.includes("Director");
-          const isPersonnelManager = roles.includes("Personnel_Manager");
+          // normalize roles safely
+          const normalizedRoles = (roles || []).map(r =>
+            r.replace(/-/g, "_").replace(/\s/g, "_")
+          );
+          
+          const isDirector = normalizedRoles.includes("Director");
+          const isPersonnelManager =
+            normalizedRoles.includes("Personnel_Manager");
           
           let roleLabel = "Member";
           
