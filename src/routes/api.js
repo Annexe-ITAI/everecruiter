@@ -1,6 +1,7 @@
 import express from "express";
 import { supabase } from "../services/supabase.js";
 import { verifySession } from "../services/session.js";
+import { getCorporation, getAlliance, getPortrait } from "../services/esi.js";
 
 const router = express.Router();
 
@@ -17,55 +18,77 @@ router.get("/me", async (req, res) => {
     const token = authHeader.split(" ")[1];
     const session = verifySession(token);
 
-    const { data: character } = await supabase
-      .from("characters")
-      .select("*")
-      .eq("character_id", session.character_id)
-      .single();
-    
-    const corpRes = await fetch(
-      `https://esi.evetech.net/latest/corporations/${character.corporation_id}/`
-    );
-    const corpData = await corpRes.json();
-
-    let allianceData = null;
-
-    if (character.alliance_id) {
-      const allianceRes = await fetch(
-        `https://esi.evetech.net/latest/alliances/${character.alliance_id}/`
-      );
-      allianceData = await allianceRes.json();
-    }
-
-    const portrait_url = `https://images.evetech.net/characters/${character.character_id}/portrait?size=256`;
-    
+    // -----------------------------
+    // USER
+    // -----------------------------
     const { data: user } = await supabase
       .from("users")
       .select("*")
       .eq("id", session.user_id)
       .single();
 
-    if (!character || !user) {
-      return res.status(404).json({ error: "Not found" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
-    const isMember = character.corporation_id === TOOL_CORP_ID;
+    // -----------------------------
+    // ALL CHARACTERS
+    // -----------------------------
+    const { data: characters } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("user_id", session.user_id);
+
+    if (!characters || characters.length === 0) {
+      return res.status(404).json({ error: "No characters found" });
+    }
+
+    // -----------------------------
+    // ENRICH CHARACTERS
+    // -----------------------------
+    const enrichedCharacters = await Promise.all(
+      characters.map(async (char) => {
+        const corporation = await getCorporation(char.corporation_id);
+        const alliance = await getAlliance(char.alliance_id);
+
+        const isMember = char.corporation_id === TOOL_CORP_ID;
+
+        return {
+          character_id: char.character_id,
+          character_name: char.character_name,
+          corporation_id: char.corporation_id,
+          alliance_id: char.alliance_id,
+          is_main: char.is_main,
+
+          portrait_url: getPortrait(char.character_id, 128),
+
+          corporation_name: corporation?.name || "Unknown",
+          alliance_name: alliance?.name || null,
+
+          is_member: isMember,
+          recruitment_status: user.recruitment_status
+        };
+      })
+    );
+
+    // -----------------------------
+    // MAIN CHARACTER
+    // -----------------------------
+    const main_character =
+      enrichedCharacters.find(c => c.is_main) || enrichedCharacters[0];
 
     return res.json({
       user,
-      character,
+      main_character,
+      characters: enrichedCharacters,
       access: {
-        isMember,
-        role: isMember ? "member" : "external"
-      },
-      meta: {
-        corporation_name: corpData.name,
-        alliance_name: allianceData?.name || null,
-        portrait_url
+        isMember: main_character.is_member,
+        role: main_character.is_member ? "member" : "external"
       }
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(401).json({ error: "Invalid session" });
   }
 });
