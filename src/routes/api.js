@@ -37,7 +37,13 @@ router.get("/me", async (req, res) => {
         const corporation = await getCorporation(char.corporation_id);
         const alliance = await getAlliance(char.alliance_id);
 
-        const roles = await getCharacterRoles(char.character_id);
+        const { data: roleRow } = await supabase
+          .from("character_roles")
+          .select("roles")
+          .eq("character_id", char.character_id)
+          .single();
+        
+        const roles = roleRow?.roles || [];
 
         const isDirector = roles.includes("Director");
         const isPersonnelManager = roles.includes("Personnel_Manager");
