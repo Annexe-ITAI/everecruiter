@@ -65,7 +65,10 @@ router.get("/me", async (req, res) => {
           } else if (isPersonnelManager) {
             roleLabel = "Personnel Manager";
           }
-      
+          
+          console.log("CHAR ROLES:", char.character_id, roles);
+          console.log("ROLE LABEL:", roleLabel);
+          
           const isMember = char.corporation_id === TOOL_CORP_ID;
       
           return {
