@@ -74,28 +74,3 @@ export function getPortrait(character_id, size = 256) {
   return `https://images.evetech.net/characters/${character_id}/portrait?size=${size}`;
 }
 
-// -------------------------
-// ROLE FETCH
-// -------------------------
-export async function getCharacterRoles(character_id) {
-  if (!character_id) return [];
-
-  const accessToken = await getValidAccessToken(character_id);
-
-  if (!accessToken) return [];
-
-  const res = await fetch(
-    `https://esi.evetech.net/latest/characters/${character_id}/roles/`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    }
-  );
-
-  if (!res.ok) return [];
-
-  const json = await res.json();
-
-  return json.roles || [];
-}
