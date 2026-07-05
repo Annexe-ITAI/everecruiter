@@ -90,3 +90,18 @@ export function getPortrait(character_id, size = 256) {
 
   return `https://images.evetech.net/characters/${character_id}/portrait?size=${size}`;
 }
+  // -----------------------
+  // CORPORATION ROLES
+  // -----------------------
+  export async function getCharacterRoles(character_id) {
+  if (!character_id) return [];
+
+  const res = await fetch(
+    `https://esi.evetech.net/latest/characters/${character_id}/roles/`
+  );
+
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return data.roles || [];
+}
