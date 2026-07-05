@@ -10,99 +10,70 @@ const TOOL_CORP_ID = 98012419;
 router.get("/me", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({ error: "No token" });
-    }
+    if (!authHeader) return res.status(401).json({ error: "No token" });
 
     const token = authHeader.split(" ")[1];
     const session = verifySession(token);
 
-    // -----------------------------
-    // USER
-    // -----------------------------
     const { data: user } = await supabase
       .from("users")
       .select("*")
       .eq("id", session.user_id)
       .single();
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    // -----------------------------
-    // ALL CHARACTERS
-    // -----------------------------
     const { data: characters } = await supabase
       .from("characters")
       .select("*")
       .eq("user_id", session.user_id);
 
-    if (!characters || characters.length === 0) {
+    if (!characters?.length) {
       return res.status(404).json({ error: "No characters found" });
     }
 
-    // -----------------------------
-    // ENRICH CHARACTERS
-    // -----------------------------
-      const enrichedCharacters = await Promise.all(
-        characters.map(async (char) => {
-          const corporation = await getCorporation(char.corporation_id);
-          const alliance = await getAlliance(char.alliance_id);
-      
-          const roleData = await getCharacterRoles(char.character_id);
-          
-          console.log("ESI ROLES RAW:", data);
-          console.log("ROLES ARRAY:", data.roles);
-          
-          // handle different possible ESI shapes safely
-          const roles = Array.isArray(roleData)
-            ? roleData
-            : roleData?.roles || [];
-          
-          const isDirector = roles.includes("Director");
-          const isPersonnelManager = roles.includes("Personnel_Manager");
-          
-          // IMPORTANT: only set label if a role exists
-          let roleLabel = null;
-          
-          if (isDirector && isPersonnelManager) {
-            roleLabel = "Director / Personnel Manager";
-          } else if (isDirector) {
-            roleLabel = "Director";
-          } else if (isPersonnelManager) {
-            roleLabel = "Personnel Manager";
-          }
-          
-          console.log("CHAR ROLES:", char.character_id, roles);
-          console.log("ROLE LABEL:", roleLabel);
-          
-          const isMember = char.corporation_id === TOOL_CORP_ID;
-      
-          return {
-            character_id: char.character_id,
-            character_name: char.character_name,
-            corporation_id: char.corporation_id,
-            alliance_id: char.alliance_id,
-            is_main: char.is_main,
-      
-            portrait_url: getPortrait(char.character_id, 128),
-      
-            corporation_name: corporation?.name || "Unknown",
-            alliance_name: alliance?.name || null,
-      
-            is_member: isMember,
-            recruitment_status: char.recruitment_status || "new",
-      
-            role_label: roleLabel
-          };
-        })
-      );
+    const enrichedCharacters = await Promise.all(
+      characters.map(async (char) => {
+        const corporation = await getCorporation(char.corporation_id);
+        const alliance = await getAlliance(char.alliance_id);
 
-    // -----------------------------
-    // MAIN CHARACTER
-    // -----------------------------
+        const roles = await getCharacterRoles(char.character_id);
+
+        const isDirector = roles.includes("Director");
+        const isPersonnelManager = roles.includes("Personnel_Manager");
+
+        let roleLabel = null;
+
+        if (isDirector && isPersonnelManager) {
+          roleLabel = "Director / Personnel Manager";
+        } else if (isDirector) {
+          roleLabel = "Director";
+        } else if (isPersonnelManager) {
+          roleLabel = "Personnel Manager";
+        }
+
+        const isMember = char.corporation_id === TOOL_CORP_ID;
+
+        return {
+          character_id: char.character_id,
+          character_name: char.character_name,
+          corporation_id: char.corporation_id,
+          alliance_id: char.alliance_id,
+          is_main: char.is_main,
+
+          portrait_url: getPortrait(char.character_id, 128),
+
+          corporation_name: corporation?.name || "Unknown",
+          alliance_name: alliance?.name || null,
+
+          is_member: isMember,
+          recruitment_status: char.recruitment_status || "new",
+
+          role_label: roleLabel
+        };
+      })
+    );
+
     const main_character =
       enrichedCharacters.find(c => c.is_main) || enrichedCharacters[0];
 
@@ -121,8 +92,5 @@ router.get("/me", async (req, res) => {
     return res.status(401).json({ error: "Invalid session" });
   }
 });
-
-console.log("SESSION TOKEN RECEIVED:", token);
-console.log("SESSION DECODED:", session);
 
 export default router;
