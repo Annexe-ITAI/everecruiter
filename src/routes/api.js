@@ -66,7 +66,8 @@ router.get("/me", async (req, res) => {
           alliance_name: alliance?.name || null,
 
           is_member: isMember,
-          recruitment_status: user.recruitment_status
+          recruitment_status: char.recruitment_status || "new",
+          
         };
       })
     );
