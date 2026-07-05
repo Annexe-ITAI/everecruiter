@@ -7,5 +7,6 @@ export function createSession(payload) {
 }
 
 export function verifySession(token) {
+  if (!token) throw new Error("Missing token");
   return jwt.verify(token, SECRET);
 }
