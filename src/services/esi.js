@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { getValidAccessToken } from "./eveAuth.js";
 
 // -------------------------
 // CORPORATION CACHE
@@ -74,24 +75,20 @@ export function getPortrait(character_id, size = 256) {
 }
 
 // -------------------------
-// 🔥 FIXED ROLE FETCH (CRITICAL)
+// ROLE FETCH
 // -------------------------
 export async function getCharacterRoles(character_id) {
   if (!character_id) return [];
 
-  const { data } = await supabase
-    .from("auth_tokens")
-    .select("access_token, token_expires_at")
-    .eq("character_id", character_id)
-    .single();
+  const accessToken = await getValidAccessToken(character_id);
 
-  if (!data?.access_token) return [];
+  if (!accessToken) return [];
 
   const res = await fetch(
     `https://esi.evetech.net/latest/characters/${character_id}/roles/`,
     {
       headers: {
-        Authorization: `Bearer ${data.access_token}`
+        Authorization: `Bearer ${accessToken}`
       }
     }
   );
