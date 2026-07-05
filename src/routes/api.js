@@ -51,18 +51,18 @@ router.get("/me", async (req, res) => {
           const corporation = await getCorporation(char.corporation_id);
           const alliance = await getAlliance(char.alliance_id);
       
-          const roles = await getCharacterRoles(char.character_id);
+          const roleData = await getCharacterRoles(char.character_id);
           
-          // normalize roles safely
-          const normalizedRoles = (roles || []).map(r =>
-            r.replace(/-/g, "_").replace(/\s/g, "_")
-          );
+          // handle different possible ESI shapes safely
+          const roles = Array.isArray(roleData)
+            ? roleData
+            : roleData?.roles || [];
           
-          const isDirector = normalizedRoles.includes("Director");
-          const isPersonnelManager =
-            normalizedRoles.includes("Personnel_Manager");
+          const isDirector = roles.includes("Director");
+          const isPersonnelManager = roles.includes("Personnel_Manager");
           
-          let roleLabel = "Member";
+          // IMPORTANT: only set label if a role exists
+          let roleLabel = null;
           
           if (isDirector && isPersonnelManager) {
             roleLabel = "Director / Personnel Manager";
