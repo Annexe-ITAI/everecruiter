@@ -1,7 +1,7 @@
 import express from "express";
 import { supabase } from "../services/supabase.js";
 import { verifySession } from "../services/session.js";
-import { getCorporation, getAlliance, getPortrait } from "../services/esi.js";
+import { getCorporation, getAlliance, getPortrait, getCharacterRoles } from "../services/esi.js";
 
 const router = express.Router();
 
@@ -46,31 +46,47 @@ router.get("/me", async (req, res) => {
     // -----------------------------
     // ENRICH CHARACTERS
     // -----------------------------
-    const enrichedCharacters = await Promise.all(
-      characters.map(async (char) => {
-        const corporation = await getCorporation(char.corporation_id);
-        const alliance = await getAlliance(char.alliance_id);
-
-        const isMember = char.corporation_id === TOOL_CORP_ID;
-
-        return {
-          character_id: char.character_id,
-          character_name: char.character_name,
-          corporation_id: char.corporation_id,
-          alliance_id: char.alliance_id,
-          is_main: char.is_main,
-
-          portrait_url: getPortrait(char.character_id, 128),
-
-          corporation_name: corporation?.name || "Unknown",
-          alliance_name: alliance?.name || null,
-
-          is_member: isMember,
-          recruitment_status: char.recruitment_status || "new",
-          
-        };
-      })
-    );
+      const enrichedCharacters = await Promise.all(
+        characters.map(async (char) => {
+          const corporation = await getCorporation(char.corporation_id);
+          const alliance = await getAlliance(char.alliance_id);
+      
+          const roles = await getCharacterRoles(char.character_id);
+      
+          const isDirector = roles.includes("Director");
+          const isPersonnelManager = roles.includes("PersonnelManager");
+      
+          let roleLabel = "Member";
+      
+          if (isDirector && isPersonnelManager) {
+            roleLabel = "Director / Personnel Manager";
+          } else if (isDirector) {
+            roleLabel = "Director";
+          } else if (isPersonnelManager) {
+            roleLabel = "Personnel Manager";
+          }
+      
+          const isMember = char.corporation_id === TOOL_CORP_ID;
+      
+          return {
+            character_id: char.character_id,
+            character_name: char.character_name,
+            corporation_id: char.corporation_id,
+            alliance_id: char.alliance_id,
+            is_main: char.is_main,
+      
+            portrait_url: getPortrait(char.character_id, 128),
+      
+            corporation_name: corporation?.name || "Unknown",
+            alliance_name: alliance?.name || null,
+      
+            is_member: isMember,
+            recruitment_status: char.recruitment_status || "new",
+      
+            role_label: roleLabel
+          };
+        })
+      );
 
     // -----------------------------
     // MAIN CHARACTER
