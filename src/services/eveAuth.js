@@ -1,5 +1,6 @@
 import axios from "axios";
 import { supabase } from "./supabase.js";
+import { syncCharacterRoles } from "./roleSync.js";
 
 const TOKEN_URL = "https://login.eveonline.com/v2/oauth/token";
 
@@ -34,7 +35,15 @@ export async function getValidAccessToken(character_id) {
       updated_at: new Date()
     })
     .eq("character_id", character_id);
-
+  
+  // 🔥 refresh roles whenever token refreshes
+  await syncCharacterRoles(character_id);
+  
+  if (expiresAt > now + 60_000) {
+  syncCharacterRoles(character_id); // background sync
+  return tokenData.access_token;
+}
+  
   return refreshed.access_token;
 }
 
