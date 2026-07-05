@@ -1,7 +1,6 @@
 import express from "express";
 import { supabase } from "../services/supabase.js";
 import { verifySession } from "../services/session.js";
-import { getCorporation, getAlliance, getPortrait, getCharacterRoles } from "../services/esi.js";
 
 const router = express.Router();
 
