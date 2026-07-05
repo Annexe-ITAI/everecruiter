@@ -16,14 +16,19 @@ export async function getValidAccessToken(character_id) {
   const now = Date.now();
   const expiresAt = new Date(tokenData.token_expires_at).getTime();
 
-  // If token still valid → use it
+  // ----------------------------
+  // 1. STILL VALID → return immediately
+  // ----------------------------
   if (expiresAt > now + 60_000) {
+    // optional background sync (safe, non-blocking)
+    syncCharacterRoles(character_id);
     return tokenData.access_token;
   }
 
-  // Otherwise refresh it
+  // ----------------------------
+  // 2. EXPIRED → REFRESH
+  // ----------------------------
   const refreshed = await refreshAccessToken(tokenData.refresh_token);
-
   if (!refreshed) return null;
 
   await supabase
@@ -35,15 +40,10 @@ export async function getValidAccessToken(character_id) {
       updated_at: new Date()
     })
     .eq("character_id", character_id);
-  
-  // 🔥 refresh roles whenever token refreshes
+
+  // refresh roles ONCE after refresh
   await syncCharacterRoles(character_id);
-  
-  if (expiresAt > now + 60_000) {
-  syncCharacterRoles(character_id); // background sync
-  return tokenData.access_token;
-}
-  
+
   return refreshed.access_token;
 }
 
@@ -68,7 +68,10 @@ async function refreshAccessToken(refresh_token) {
 
     return res.data;
   } catch (err) {
-    console.error("EVE token refresh failed:", err.response?.data || err.message);
+    console.error(
+      "EVE token refresh failed:",
+      err.response?.data || err.message
+    );
     return null;
   }
 }
