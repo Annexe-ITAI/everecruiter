@@ -10,12 +10,9 @@ const TOOL_CORP_ID = 98012419;
 router.get("/", async (req, res) => {
   try {
     const { code } = req.query;
+    if (!code) return res.status(400).send("Missing code");
 
-    if (!code) {
-      return res.status(400).send("Missing code");
-    }
-
-    // 1. Exchange code for tokens
+    // Exchange code
     const tokenResponse = await axios.post(
       "https://login.eveonline.com/v2/oauth/token",
       new URLSearchParams({
@@ -35,20 +32,18 @@ router.get("/", async (req, res) => {
 
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // 2. Verify character
-    const verifyResponse = await axios.get(
+    // Verify character
+    const verify = await axios.get(
       "https://login.eveonline.com/oauth/verify",
       {
-        headers: {
-          Authorization: `Bearer ${access_token}`
-        }
+        headers: { Authorization: `Bearer ${access_token}` }
       }
     );
 
-    const character_id = verifyResponse.data.CharacterID;
-    const character_name = verifyResponse.data.CharacterName;
+    const character_id = verify.data.CharacterID;
+    const character_name = verify.data.CharacterName;
 
-    // 3. Get corp info
+    // Character info
     const charInfo = await axios.get(
       `https://esi.evetech.net/latest/characters/${character_id}/`
     );
@@ -56,8 +51,8 @@ router.get("/", async (req, res) => {
     const corporation_id = charInfo.data.corporation_id;
     const alliance_id = charInfo.data.alliance_id || null;
 
-    // 4. Create / find user
-    let { data: existingCharacter } = await supabase
+    // Upsert user
+    let { data: existing } = await supabase
       .from("characters")
       .select("*")
       .eq("character_id", character_id)
@@ -65,7 +60,7 @@ router.get("/", async (req, res) => {
 
     let user_id;
 
-    if (!existingCharacter) {
+    if (!existing) {
       const { data: newUser } = await supabase
         .from("users")
         .insert({
@@ -88,7 +83,7 @@ router.get("/", async (req, res) => {
         is_main: true
       });
     } else {
-      user_id = existingCharacter.user_id;
+      user_id = existing.user_id;
 
       await supabase
         .from("characters")
@@ -100,7 +95,7 @@ router.get("/", async (req, res) => {
         .eq("character_id", character_id);
     }
 
-    // 5. Store tokens
+    // Store EVE tokens
     await supabase.from("auth_tokens").upsert({
       character_id,
       access_token,
@@ -109,16 +104,15 @@ router.get("/", async (req, res) => {
       updated_at: new Date()
     });
 
-    // 6. Session
+    // Create session
     const sessionToken = createSession({
       character_id,
       user_id
     });
 
-
-    // 7. Redirect
+    // IMPORTANT: remove dependency on URL token system
     return res.redirect(
-      `https://recruit.inextremis.co/dashboard?token=${sessionToken}`
+      `https://recruit.inextremis.co/dashboard`
     );
 
   } catch (err) {
